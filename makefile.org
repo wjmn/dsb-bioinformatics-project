@@ -1,0 +1,68 @@
+#+TITLE: Making the Project
+#+BABEL: :results output :exports both
+
+* This File
+
+This file is intended as a literate "makefile" of the project and runs the data through processing to produce the final outputs. Annotations to the code will primarily regard the practical and coding implementation of the analysis rather than delving too deep into the biological underpinnings; for further reference, see the Google Doc located at https://docs.google.com/a/monash.edu/document/d/1F0qucM-XxRtRfOEErd22fEucy6gzrqXJUixhQG_D5oU/edit?usp=sharing.
+
+* Data Acquisition
+
+** GSE25577
+
+Data for Accession GSE25577 was obtained from the NCBI GEO, available at https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE25577. 
+
+The data was downloaded, extracted using the default Linux command line utilities and placed in the =/data/raw/GSE25577= folder. 
+
+As this data contained files split into two, the data was concatenated with the below:
+
+#+BEGIN_SRC sh :tangle src/make_GSE25577_concatenated.sh
+cd ../data/raw/markers/GSE25577
+
+mkdir ../../../temp/GSE25577_concatenated
+destination=../../../temp/GSE25577_concatenated/
+
+for filename in *1.bed;
+do
+    file_no_dir=${filename##*/}
+    file_new_name=${file_no_dir/_1.bed/.bed} 
+    cp $filename $destination$file_new_name
+    cat ${filename/1.bed/2.bed} >> $destination$file_new_name
+done
+#+END_SRC
+
+This produces the concatenated files into a new directory, =/data/temp/markers/GSE25577_concatenated=.
+
+** GSE57426
+
+Data for Accession GSE57426 was obtained from the NCBI GEO, available at https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE57426.
+
+The data was downloaded, extracted as above and placed in the =/data/raw/GSE57426= folder.
+
+** TODO Automate the download and extraction process
+
+
+(Note: to save on disk space, I have temporarily removed the raw files. These will need to be downloaded and extracted at a later date if the preprocessing changes.)
+
+* Data Preprocessing
+
+** Converting GSE57426 wig to bed
+
+The BEDOPS tools wig2bed was used for this conversion:
+
+#+BEGIN_SRC shell :tangle src/make_GSE57426_wig2bed.sh
+cd ../data/raw/markers/GSE57426/
+
+mkdir ../../../temp/GSE57426_wig2bed
+destination=../../../temp/GSE57426_wig2bed/
+
+for filename in *.wig;
+do
+    wig2bed < $filename > $destination${filename/.wig/.bed}
+done
+#+END_SRC
+
+#+RESULTS:
+
+
+
+

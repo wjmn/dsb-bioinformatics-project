@@ -1,0 +1,10 @@
+#+TITLE: Project Directory Reorganisation
+#+DATE: 2017/07/13
+
+* Work Reorganisation
+
+Up until now, all the work is recorded in the Jupyter notebooks predating this org file, as well as my own personal handwritten notes.
+
+To ensure easier code manipulation and version control, I will be using a central org file (=makefile.org=) with code tangled into separate files within the =src= directory. I will continue to use dated notebooks to record details of my progress as I go. 
+
+In addition, I will be updating the Google Drive document (https://docs.google.com/a/monash.edu/document/d/1F0qucM-XxRtRfOEErd22fEucy6gzrqXJUixhQG_D5oU/edit?usp=sharing) with details such as project progress and annotated readings.
