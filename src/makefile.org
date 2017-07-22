@@ -1,0 +1,512 @@
+#+TITLE: Making the Project
+#+BABEL: :results output :exports both
+
+* This File
+
+This file is intended as a literate "makefile" of the project and runs the data through processing to produce the final outputs. Annotations to the code will primarily regard the practical and coding implementation of the analysis rather than delving too deep into the biological underpinnings; for further reference, see the Google Doc located at https://docs.google.com/a/monash.edu/document/d/1F0qucM-XxRtRfOEErd22fEucy6gzrqXJUixhQG_D5oU/edit?usp=sharing.
+
+* Data Acquisition
+
+** GSE25577
+
+Data for Accession GSE25577 was obtained from the NCBI GEO, available at https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE25577. 
+
+The data was downloaded, extracted using the default Linux command line utilities and placed in the =/data/raw/GSE25577= folder. 
+
+As this data contained files split into two, the data was concatenated with the below:
+
+#+BEGIN_SRC shell :tangle make_GSE25577_concatenated.sh
+cd ../data/raw/markers/GSE25577
+
+mkdir ../../../temp/GSE25577_concatenated
+destination=../../../temp/GSE25577_concatenated/
+
+for filename in *1.bed;
+do
+    file_no_dir=${filename##*/}
+    file_new_name=${file_no_dir/_1.bed/.bed} 
+    cp $filename $destination$file_new_name
+    cat ${filename/1.bed/2.bed} >> $destination$file_new_name
+done
+#+END_SRC
+
+This produces the concatenated files into a new directory, =/data/temp/markers/GSE25577_concatenated=.
+
+** GSE57426
+
+Data for Accession GSE57426 was obtained from the NCBI GEO, available at https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE57426.
+
+The data was downloaded, extracted as above and placed in the =/data/raw/GSE57426= folder.
+
+** GSE55699
+
+Data for Accession GSE55699 was obtained as above and placed in the =/data/raw/GSE55699= folder.
+
+** Mutation Files
+
+Mutation files were all obtained from the GDC Data Portal under a search for Masked Somatic Mutation files of the appropriate cancer primary site. 
+
+** TODO liftOverChains
+
+** TODO Filter lists
+
+*** Blacklist
+
+Reference https://sites.google.com/site/anshulkundaje/projects/blacklists
+
+*** RMSK
+
+** TODO Automate the download and extraction process
+
+
+(Note: to save on disk space, I have temporarily removed the raw files. These will need to be downloaded and extracted at a later date if the preprocessing changes.)
+
+* Data Preprocessing
+
+** General
+
+Make directory markers_hg19 and markers_hg38
+
+#+BEGIN_SRC shell
+mkdir ../data/temp/markers_hg19
+mkdir ../data/temp/markers_hg38
+#+END_SRC
+
+#+RESULTS:
+
+** Converting GSE57426 wig to bed
+
+The BEDOPS tools wig2bed was used for this conversion:
+
+#+BEGIN_SRC shell :tangle make_GSE57426_wig2bed.sh
+cd ../data/raw/markers/GSE57426/
+
+destination=../../../temp/markers_hg19/
+
+# Do not sort used here since for some reason, will not complete if sorted (memory issues?)
+# awk used here to prepend "chr" to the numbers in column 1
+for filename in *.wig;
+do
+    wig2bed --do-not-sort < $filename | awk '$1 = "chr" $1'| sed s/" "/"\t"/g > $destination${filename/.wig/.bed}
+done
+#+END_SRC
+
+#+RESULTS:
+
+** Converting MAF to BED
+
+*** TODO Check this has been done correctly - I'm not entirely confidence on the whole text processing to convert thing...
+
+According to [[https://wiki.nci.nih.gov/display/TCGA/Mutation+Annotation+Format+(MAF)+Specification][the NCI Wiki]], the MAF files are specified with 1-based indexing (rather than the 0-based indexing that BED files use). This might not be such a problem as it seems like doing intersection with windows might be easier anyway, but something to keep in mind. 
+
+#+BEGIN_SRC shell :tangle convert_maf_to_bed.sh
+cd ../data/raw/mutations/
+
+mkdir ../../temp/mutations_hg38
+
+for filename in *.maf;
+do 
+    cut -f 5-8 $filename \
+    | grep -e '^chr' \
+    | awk '$3 = $3 FS "." FS "."' \
+    | awk '$2 = $2 - 1' \
+    | awk '$3 = $3 - 1' \
+    | sed s/" "/"\t"/g \
+    > ../../temp/mutations_hg38/${filename%.maf}.bed
+done
+#+END_SRC
+
+** liftOver
+
+*** TODO Check usage of liftOver vs liftOverMerge
+
+*** GSE25577 (hg18->hg38)
+
+#+BEGIN_SRC shell :tangle liftOver_GSE25577_18to38.sh
+# LIFTOVER FOR hg18 BED FILES -----------------------------------------------------------------------------
+cd ../data/temp/GSE25577_concatenated
+
+# PAY ATTENTION TO THE LINE DIRECTLY BELOW: 18 VS 19 VS 38
+dir_chain=../../raw/liftOverchains/hg18ToHg38.over.chain
+dir_save=../markers_hg38/
+
+for filename in *.bed;
+do
+    liftOver $filename $dir_chain $dir_save${filename/.bed/_liftedto38.bed} $dir_save${filename/.bed/_liftedto38.err}
+done
+
+#+END_SRC
+
+#+RESULTS:
+
+*** GSE25577 (hg18->hg19)
+
+#+BEGIN_SRC shell :tangle liftOver_GSE25577_18to19.sh
+cd ../data/temp/GSE25577_concatenated
+
+# PAY ATTENTION TO THE LINE DIRECTLY BELOW: 18 VS 19 VS 38
+dir_chain=../../raw/liftOverchains/hg18ToHg19.over.chain
+dir_save=../markers_hg19/
+
+for filename in *.bed;
+do
+    liftOver $filename $dir_chain $dir_save${filename/.bed/_liftedto19.bed} $dir_save${filename/.bed/_liftedto19.err}
+done
+#+END_SRC
+
+#+RESULTS:
+
+*** GSE57426 (hg19->hg38)
+
+#+BEGIN_SRC shell :tangle liftOver_GSE57426_19to38.sh
+cd ../data/temp/markers_hg19
+
+# PAY ATTENTION TO THE LINE DIRECTLY BELOW: 18 VS 19 VS 38
+dir_chain=../../raw/liftOverchains/hg19ToHg38.over.chain
+dir_save=../markers_hg38/
+
+for filename in GSM138*.bed;
+do
+    liftOver $filename $dir_chain $dir_save${filename/.bed/_liftedto38.bed} $dir_save${filename/.bed/_liftedto38.err}
+done
+#+END_SRC
+
+*** GSE55699 (hg19->hg38)
+
+#+BEGIN_SRC shell :tangle liftOver_GSE55699_19to38.sh
+cd ../data/raw/markers/GSE55699
+
+# PAY ATTENTION TO THE LINE DIRECTLY BELOW: 18 VS 19 VS 38
+dir_chain=../../liftOverchains/hg19ToHg38.over.chain
+dir_save=../../../temp/markers_hg38/
+
+for filename in *.txt;
+do
+    liftOver $filename $dir_chain $dir_save${filename/.bed/_liftedto38.bed} $dir_save${filename/.bed/_liftedto38.err}
+done
+#+END_SRC
+
+** Populating Filter List
+
+*** Populating the Filter List: hg19
+
+#+BEGIN_SRC shell :tangle populate_hg19_filterlist.sh
+cd ../data/raw/blacklists
+
+destination=../../temp/filterlist/hg19_filterlist_concatsorted.bed
+rmsk=hg19_rmsk.bed
+blacklist=ENCFF001TDO.bed
+
+cat $rmsk $blacklist | cut -f 1-3 | sort -k1,1 -k2,2n > $destination
+
+#+END_SRC
+
+*** Populating the Filter List: hg38
+
+#+BEGIN_SRC shell :tangle populate_hg38_filterlist.sh
+cd ../data/raw/blacklists
+
+destination=../../temp/filterlist/hg38_filterlist_concatsorted.bed
+rmsk=hg38_rmsk.bed
+blacklist=hg38.blacklist.bed
+
+cat $rmsk $blacklist | cut -f 1-3 | sort -k1,1 -k2,2n > $destination
+
+#+END_SRC
+
+** Filter and Intersection
+
+*** Function Wrappers
+
+**** Filter
+
+#+BEGIN_SRC shell :tangle wrapped_filter.sh
+  function wrapped_filter {
+      # Args:
+      # $1 -- file to be filtered
+      # $2 -- file containing filter regions
+      # $3 -- destination file for output
+ 
+      bedtools subtract -a $1 -b $2 > $3
+
+  }
+
+#+END_SRC
+
+**** Intersection
+
+#+BEGIN_SRC shell :tangle wrapped_intersect.sh
+  function wrapped_intersect {
+      # Args:
+      # $1 -- marker file
+      # $2 -- mutations file
+      # $3 -- destination file for output
+
+      # Note specification of window size below -w
+      bedtools window -a $1 -b $2 -w 100 > $3
+
+  }
+
+#+END_SRC
+
+*** Filtering All Input Files
+
+#+BEGIN_SRC shell
+mkdir ../data/temp/filtered
+mkdir ../data/temp/filtered/markers_hg19
+mkdir ../data/temp/filtered/markers_hg38
+mkdir ../data/temp/filtered/mutations_hg19
+mkdir ../data/temp/filtered/mutations_hg38
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC shell :tangle run_filter.sh
+. ./wrapped_filter.sh
+
+filter_hg19=../data/temp/filterlist/hg19_filterlist_concatsorted.bed
+filter_hg38=../data/temp/filterlist/hg38_filterlist_concatsorted.bed
+
+markers_hg19_dirs="../data/temp/markers_hg19/*.bed
+../data/raw/markers/GSE55699/*.txt"
+markers_hg38_dirs="../data/temp/markers_hg38/*.bed
+../data/temp/markers_hg38/*.bed.peak.txt"
+mutations_hg19_dirs="../data/external/subtyped_mutations/*.bed"
+mutations_hg38_dirs="../data/temp/mutations_hg38/*.bed"
+
+out_markers_hg19=../data/temp/filtered/markers_hg19/
+out_markers_hg38=../data/temp/filtered/markers_hg38/
+out_mutations_hg19=../data/temp/filtered/mutations_hg19/
+out_mutations_hg38=../data/temp/filtered/mutations_hg38/
+
+for file in $markers_hg19_dirs
+do
+    wrapped_filter $file $filter_hg19 $out_markers_hg19${file##*/}
+done 
+
+for file in $mutations_hg19_dirs
+do
+    wrapped_filter $file $filter_hg19 $out_mutations_hg19${file##*/}
+done 
+
+for file in $markers_hg38_dirs
+do
+    wrapped_filter $file $filter_hg38 $out_markers_hg38${file##*/}
+done 
+
+for file in $mutations_hg38_dirs
+do
+    wrapped_filter $file $filter_hg38 $out_mutations_hg38${file##*/}
+done 
+
+#+END_SRC
+
+*** Generating Random, Filtered Mutations Files
+
+(For a comparison with Jaccard outputs...)
+
+#+BEGIN_SRC shell
+mkdir ../data/temp/mutations_random
+
+mkdir ../data/temp/filtered/mutations_random_hg19
+mkdir ../data/temp/filtered/mutations_random_hg38
+#+END_SRC
+
+#+RESULTS:
+
+Making master random files and filtering them:
+
+#+BEGIN_SRC shell :tangle get_random_mutations.sh
+genome_file=../data/temp/genomes_culled/human.hg19.genome
+filterlist=../data/temp/filterlist/hg19_filterlist_concatsorted.bed
+destination=../data/temp/mutations_random/random_hg19.bed
+destination_filtered=../data/temp/mutations_random/random_hg19_filtered.bed
+bedtools random -l 0 -n 1000000 -seed 1 -g $genome_file > $destination
+bedtools subtract -a $destination -b $filterlist > $destination_filtered
+
+genome_file=../data/temp/genomes_culled/human.hg38.genome
+filterlist=../data/temp/filterlist/hg38_filterlist_concatsorted.bed
+destination=../data/temp/mutations_random/random_hg38.bed
+destination_filtered=../data/temp/mutations_random/random_hg38_filtered.bed
+bedtools random -l 0 -n 1000000 -seed 1 -g $genome_file > $destination
+bedtools subtract -a $destination -b $filterlist > $destination_filtered
+#+END_SRC
+
+Making these the same length as the original mutations files:
+
+#+BEGIN_SRC shell :tangle get_random_mutations_cut_hg19.sh
+mutations_dir_hg19=../data/temp/filtered/mutations_hg19
+cd $mutations_dir_hg19
+
+destination=../mutations_random_hg19/
+random_mutations=../../mutations_random/random_hg19_filtered.bed
+
+for file in ./*
+do
+    num_lines=`wc -l $file | cut -f1 -d' '`;
+    cat $random_mutations \
+    | awk -v num_lines="$num_lines" 'NR <= num_lines {print}' \
+    | sed s/" "/"\t"/g \
+    > $destination${file/.bed/RANDOMISED.bed}
+done
+#+END_SRC
+
+#+BEGIN_SRC shell :tangle get_random_mutations_cut_hg38.sh
+mutations_dir_hg38=../data/temp/filtered/mutations_hg38/
+cd $mutations_dir_hg38
+
+destination=../mutations_random_hg38/
+random_mutations=../../mutations_random/random_hg38_filtered.bed
+
+for file in ./*
+do
+    num_lines=`wc -l $file | cut -f1 -d' '`;
+    cat $random_mutations \
+    | awk -v num_lines="$num_lines" 'NR <= num_lines {print}' \
+    | sed s/" "/"\t"/g \
+    > $destination${file/.bed/RANDOMISED.bed}
+done
+
+#+END_SRC
+
+*** Sorting All Filtered Files
+
+(Might be better to do this with backups instead of in place...)
+
+#+BEGIN_SRC shell :tangle sort_filtered_files.sh
+cd ../data/temp/filtered/
+
+for file in ./*/*
+do
+    sort -k1,1 -k2,2n $file > ${file/.bed/_SORTED.bed}
+done
+#+END_SRC
+
+*** Genome Coverage Quantification
+
+Here, we attempt to quantify the genome coverage of the marker and mutation files post filtering using bedtools =genomecov=.
+
+First, we need the genome files:
+
+#+BEGIN_SRC shell :tangle get_genome_files.sh
+
+fetchChromSizes hg19 > ../data/raw/genomes/human.hg19.genome
+fetchChromSizes hg38 > ../data/raw/genomes/human.hg38.genome
+
+#+END_SRC
+
+**** hg19 Coverages
+
+#+BEGIN_SRC shell :tangle get_genomecov_19.sh
+
+genome_file=../data/temp/genomes_culled/human.hg19.genome
+dirs_hg19="../data/temp/filtered/markers_hg19/*SORTED*
+../data/temp/filtered/mutations_hg19/*SORTED*"
+destination=../data/processed/output_logs/genomecov_hg19.txt
+
+for file in $dirs_hg19
+do
+    echo ${file##*/} >> $destination;
+    bedtools genomecov -i $file -g $genome_file >> $destination;
+    echo -e "\n\n" >> $destination
+done
+
+#+END_SRC
+
+#+RESULTS:
+
+**** hg38 Coverages
+
+#+BEGIN_SRC shell :tangle get_genomecov_38.sh
+
+genome_file=../data/temp/genomes_culled/human.hg38.genome
+dirs_hg38="../data/temp/filtered/markers_hg38/*SORTED*
+../data/temp/filtered/mutations_hg38/*SORTED*"
+destination=../data/processed/output_logs/genomecov_hg38.txt
+
+for file in $dirs_hg38
+do
+    echo ${file##*/} >> $destination;
+    bedtools genomecov -i $file -g $genome_file >> $destination;
+    echo -e "\n\n" >> $destination
+done
+
+#+END_SRC
+
+*** Intersections
+
+**** Window
+
+#+BEGIN_SRC shell
+mkdir ../data/processed/intersections_hg19
+mkdir ../data/processed/intersections_hg38
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC shell :tangle run_intersections.sh
+. ./wrapped_intersect.sh
+
+markers_hg19=../data/temp/filtered/markers_hg19/*
+markers_hg38=../data/temp/filtered/markers_hg38/*
+mutations_hg19=../data/temp/filtered/mutations_hg19/*
+mutations_hg38=../data/temp/filtered/mutations_hg38/*
+
+out_hg19=../data/processed/intersections_hg19
+out_hg38=../data/processed/intersections_hg38
+
+for file_marker in $markers_hg19
+do
+    for file_mutations in $mutations_hg19
+    do
+        wrapped_intersect $file_marker $file_mutations $out_hg19${file_marker##*/}_x_${file_mutations##*/}
+    done
+done
+
+for file_marker in $markers_hg38
+do
+    for file_mutations in $mutations_hg38
+    do
+        wrapped_intersect $file_marker $file_mutations $out_hg38${file_marker##*/}_x_${file_mutations##*/}
+    done
+done
+
+#+END_SRC
+
+**** Jaccard
+
+#+BEGIN_SRC shell :tangle run_jaccard.sh
+
+output_hg19=../data/processed/output_logs/jaccard_hg19.txt
+output_hg38=../data/processed/output_logs/jaccard_hg38.txt
+
+markers_hg19=../data/temp/filtered/markers_hg19/*SORTED*
+markers_hg38=../data/temp/filtered/markers_hg38/*SORTED*
+mutations_hg19="../data/temp/filtered/mutations_hg19/*SORTED*
+../data/temp/filtered/mutations_random_hg19/*SORTED*"
+mutations_hg38="../data/temp/filtered/mutations_hg38/*SORTED*
+../data/temp/filtered/mutations_random_hg38/*SORTED*"
+
+for file_marker in $markers_hg19
+do
+    for file_mutations in $mutations_hg19
+    do
+        echo ${file_markers##./} >> $output_hg19;
+        echo ${file_mutations##./} >> $output_hg19;
+        bedtools jaccard -a $file_markers -b $file_mutations >> $output_hg19;
+        echo -e "/n/n" >> $output_hg19
+    done
+done
+
+for file_marker in $markers_hg38
+do
+    for file_mutations in $mutations_hg38
+    do
+        echo ${file_markers##./} >> $output_hg38;
+        echo ${file_mutations##./} >> $output_hg38;
+        bedtools jaccard -a $file_markers -b $file_mutations >> $output_hg38;
+        echo -e "/n/n" >> $output_hg38
+    done
+done
+
+#+END_SRC
