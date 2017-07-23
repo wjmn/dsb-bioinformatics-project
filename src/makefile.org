@@ -214,7 +214,7 @@ cat $rmsk $blacklist | cut -f 1-3 | sort -k1,1 -k2,2n > $destination
 
 #+END_SRC
 
-** Filter and Intersection
+** Processing
 
 *** Function Wrappers
 
@@ -317,14 +317,14 @@ mkdir ../data/temp/filtered/mutations_random_hg38
 Making master random files and filtering them:
 
 #+BEGIN_SRC shell :tangle get_random_mutations.sh
-genome_file=../data/temp/genomes_culled/human.hg19.genome
+genome_file=../data/raw/genomes/human.hg19.genome
 filterlist=../data/temp/filterlist/hg19_filterlist_concatsorted.bed
 destination=../data/temp/mutations_random/random_hg19.bed
 destination_filtered=../data/temp/mutations_random/random_hg19_filtered.bed
 bedtools random -l 0 -n 1000000 -seed 1 -g $genome_file > $destination
 bedtools subtract -a $destination -b $filterlist > $destination_filtered
 
-genome_file=../data/temp/genomes_culled/human.hg38.genome
+genome_file=../data/raw/genomes/human.hg38.genome
 filterlist=../data/temp/filterlist/hg38_filterlist_concatsorted.bed
 destination=../data/temp/mutations_random/random_hg38.bed
 destination_filtered=../data/temp/mutations_random/random_hg38_filtered.bed
@@ -399,7 +399,7 @@ fetchChromSizes hg38 > ../data/raw/genomes/human.hg38.genome
 
 #+BEGIN_SRC shell :tangle get_genomecov_19.sh
 
-genome_file=../data/temp/genomes_culled/human.hg19.genome
+genome_file=../data/raw/genomes/human.hg19.genome
 dirs_hg19="../data/temp/filtered/markers_hg19/*SORTED*
 ../data/temp/filtered/mutations_hg19/*SORTED*"
 destination=../data/processed/output_logs/genomecov_hg19.txt
@@ -407,7 +407,7 @@ destination=../data/processed/output_logs/genomecov_hg19.txt
 for file in $dirs_hg19
 do
     echo ${file##*/} >> $destination;
-    bedtools genomecov -i $file -g $genome_file >> $destination;
+    bedtools genomecov -i $file -g $genome_file -max 1 >> $destination;
     echo -e "\n\n" >> $destination
 done
 
@@ -419,7 +419,7 @@ done
 
 #+BEGIN_SRC shell :tangle get_genomecov_38.sh
 
-genome_file=../data/temp/genomes_culled/human.hg38.genome
+genome_file=../data/raw/genomes/human.hg38.genome
 dirs_hg38="../data/temp/filtered/markers_hg38/*SORTED*
 ../data/temp/filtered/mutations_hg38/*SORTED*"
 destination=../data/processed/output_logs/genomecov_hg38.txt
@@ -427,11 +427,14 @@ destination=../data/processed/output_logs/genomecov_hg38.txt
 for file in $dirs_hg38
 do
     echo ${file##*/} >> $destination;
-    bedtools genomecov -i $file -g $genome_file >> $destination;
+    bedtools genomecov -i $file -g $genome_file -max 1 >> $destination;
     echo -e "\n\n" >> $destination
 done
 
 #+END_SRC
+
+Note four error outputs to the console, all the same:
+=Input error: Chromosome chrMT found in your input file but not in your genome file.=
 
 *** Intersections
 
@@ -475,38 +478,42 @@ done
 
 **** Jaccard
 
+
 #+BEGIN_SRC shell :tangle run_jaccard.sh
 
-output_hg19=../data/processed/output_logs/jaccard_hg19.txt
-output_hg38=../data/processed/output_logs/jaccard_hg38.txt
+  output_hg19=../data/processed/output_logs/jaccard_hg19.txt
+  output_hg38=../data/processed/output_logs/jaccard_hg38.txt
 
-markers_hg19=../data/temp/filtered/markers_hg19/*SORTED*
-markers_hg38=../data/temp/filtered/markers_hg38/*SORTED*
-mutations_hg19="../data/temp/filtered/mutations_hg19/*SORTED*
-../data/temp/filtered/mutations_random_hg19/*SORTED*"
-mutations_hg38="../data/temp/filtered/mutations_hg38/*SORTED*
-../data/temp/filtered/mutations_random_hg38/*SORTED*"
+  markers_hg19=../data/temp/filtered/markers_hg19/*SORTED*
+  markers_hg38=../data/temp/filtered/markers_hg38/*SORTED*
+  mutations_hg19="../data/temp/filtered/mutations_hg19/*SORTED*
+  ../data/temp/filtered/mutations_random_hg19/*SORTED*"
+  mutations_hg38="../data/temp/filtered/mutations_hg38/*mutect*SORTED*
+  ../data/temp/filtered/mutations_random_hg38/*mutect*SORTED*"
 
-for file_marker in $markers_hg19
-do
-    for file_mutations in $mutations_hg19
-    do
-        echo ${file_markers##./} >> $output_hg19;
-        echo ${file_mutations##./} >> $output_hg19;
-        bedtools jaccard -a $file_markers -b $file_mutations >> $output_hg19;
-        echo -e "/n/n" >> $output_hg19
-    done
-done
+  echo -e "MARKER_FILE\tMUTATIONS_FILE\tINTERSECTION\tUNION\tJACCARD\tN_INTERSECTIONS" >> $output_hg19
 
-for file_marker in $markers_hg38
-do
-    for file_mutations in $mutations_hg38
-    do
-        echo ${file_markers##./} >> $output_hg38;
-        echo ${file_mutations##./} >> $output_hg38;
-        bedtools jaccard -a $file_markers -b $file_mutations >> $output_hg38;
-        echo -e "/n/n" >> $output_hg38
-    done
-done
+  for file_marker in $markers_hg19
+  do
+      for file_mutations in $mutations_hg19
+      do
+          printf "%s\t" "${file_marker##*/}" >> $output_hg19;
+          printf "%s\t" "${file_mutations##*/}" >> $output_hg19;
+          bedtools jaccard -a $file_marker -b $file_mutations | tail -n1 >> $output_hg19;
+      done
+  done
+
+
+  echo -e "MARKER_FILE\tMUTATIONS_FILE\tINTERSECTION\tUNION\tJACCARD\tN_INTERSECTIONS" >> $output_hg38
+
+  for file_marker in $markers_hg38
+  do
+      for file_mutations in $mutations_hg38
+      do
+          printf "%s\t" "${file_marker##*/}" >> $output_hg38;
+          printf "%s\t" "${file_mutations##*/}" >> $output_hg38;
+          bedtools jaccard -a $file_marker -b $file_mutations | tail -n1 >> $output_hg38;
+      done
+  done
 
 #+END_SRC
