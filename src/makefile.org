@@ -478,6 +478,9 @@ done
 
 **** Jaccard
 
+Note this error for TCGA-STAD, which occured 12 times.
+ERROR: chromomsome sort ordering for file ../data/temp/filtered/mutations_random_hg38TEMP/TCGA.STAD.mutect.3f59b68a-e6ed-4e77-a49f-48940ee6abda.DR-7.0.somatic_SORTEDRANDOMISED.bed is inconsistent with other files. Record was:
+chr15   26173657        26173659        10      0    -
 
 #+BEGIN_SRC shell :tangle run_jaccard.sh
 
